@@ -499,6 +499,14 @@ def _ensure_git_worktree(repo_root: Path, target: Path, branch_name: str) -> Non
         raise RuntimeError(
             f"git worktree add failed for {target} on branch {branch_name}: {stderr}"
         )
+    try:
+        from hermes_cli import central_worktrees as _central
+
+        _central.observe_managed_creation(
+            path=str(target), repo_root=str(repo_root), branch=branch_name, creator="kanban",
+        )
+    except Exception:
+        _kb._log.debug("central worktree observer failed", exc_info=True)
 
 
 def _anchored_worktree(repo_root: Path, task_id: str, branch_name: str) -> tuple[Path, str]:

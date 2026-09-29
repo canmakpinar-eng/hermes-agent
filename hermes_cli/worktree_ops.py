@@ -445,6 +445,15 @@ def _setup_worktree(repo_root: str = None, sync_base: bool = True,
     _cprint(f"\033[32m✓ Worktree created:\033[0m {wt_path}")
     print(f"  Branch: {branch_name}")
     print(f"  Base:   {base_label}")
+    try:
+        from hermes_cli import central_worktrees as _central
+
+        _central.observe_managed_creation(
+            path=str(wt_path), repo_root=repo_root, branch=branch_name,
+            base_revision=base_ref, creator="hermes-cli-worktree",
+        )
+    except Exception:
+        logger.debug("central worktree observer failed", exc_info=True)
     return {"path": str(wt_path), "branch": branch_name, "repo_root": repo_root, "base": base_ref}
 
 

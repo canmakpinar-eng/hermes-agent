@@ -94,6 +94,15 @@ def create_subagent_worktree(parent_cwd: Optional[str], subagent_id: Optional[st
         logger.warning("subagent worktree: git worktree add failed: %s", result.stderr.strip())
         return None
     logger.info("subagent worktree created: %s (branch %s)", wt_path, branch)
+    try:
+        from hermes_cli import central_worktrees as _central
+
+        _central.observe_managed_creation(
+            path=str(wt_path), repo_root=repo_root, branch=branch,
+            base_revision=base_commit or None, creator="subagent", subagent_id=subagent_id,
+        )
+    except Exception:
+        logger.debug("central worktree observer failed", exc_info=True)
     return {"path": str(wt_path), "branch": branch, "repo_root": repo_root, "base_commit": base_commit}
 
 

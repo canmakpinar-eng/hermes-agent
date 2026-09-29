@@ -1309,14 +1309,44 @@ def _run_foreground(
 _PRE_EXEC_GUARD_MIN_TIMEOUT_S = 30
 
 
+def _observe_central_worktree_command(
+    command: str,
+    *,
+    env_type: str,
+    cwd: str,
+    workdir: Optional[str],
+    session_key: str,
+    session_id: Optional[str] = None,
+) -> None:
+    """Shadow observation for the central worktree lifecycle gate (V1, never blocks).
+
+    Records a central-root worktree creation attempt (raw ``git worktree add``
+    aimed at the central pool) in the lifecycle registry so the gate sees
+    terminal-created worktrees, not only creations routed through
+    hermes_cli/worktree_ops. Best-effort by contract: any failure is
+    debug-logged and the command proceeds unchanged; nothing is ever refused.
+    """
+    try:
+        from hermes_cli import central_worktrees as _central
+
+        resolved_cwd = _resolve_command_cwd(workdir=workdir, default_cwd=cwd, session_key=session_key)
+        _central.observe_terminal_command(
+            command, cwd=resolved_cwd, session_key=session_key, session_id=session_id, env_type=env_type,
+        )
+    except Exception:
+        logger.debug("central worktree observer failed", exc_info=True)
+
+
 def _pre_exec_block(
     command: str, *, env: Any, env_type: str, cwd: str,
-    workdir: Optional[str], session_key: str,
+    workdir: Optional[str], session_key: str, session_id: Optional[str] = None,
 ) -> None:
     """Raise :class:`_Rejected` with the blocked-result JSON when the command must not run.
 
     Order matters: gateway lifecycle first (protects the running gateway),
-    then the dangerous-workdir check, then the self-repo guard (local only).
+    then the dangerous-workdir check, then the self-repo guard (local only),
+    then a shadow (never-blocking) observation for the central worktree
+    lifecycle gate.
     """
     blocked = gateway_lifecycle_block(
         command=command, env=env, env_type=env_type, cwd=cwd, workdir=workdir, session_key=session_key,
@@ -1333,6 +1363,9 @@ def _pre_exec_block(
         blocked = self_repo_block(command=command, cwd=cwd, workdir=workdir, session_key=session_key)
         if blocked:
             raise _Rejected(blocked)
+    _observe_central_worktree_command(
+        command, env_type=env_type, cwd=cwd, workdir=workdir, session_key=session_key, session_id=session_id,
+    )
 
 
 _PTY_DISABLED_REASON = (
@@ -1436,6 +1469,7 @@ def terminal_tool(
             bounded_guard = run_bounded_sync(
                 lambda: _pre_exec_block(
                     command, env=env, env_type=env_type, cwd=cwd, workdir=workdir, session_key=session_key,
+                    session_id=session_id,
                 ),
                 guard_timeout,
                 label="terminal.pre-exec-guard",
